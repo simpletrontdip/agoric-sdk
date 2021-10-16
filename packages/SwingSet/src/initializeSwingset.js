@@ -424,6 +424,11 @@ export async function initializeSwingset(
   await bundleBundles(config.vats, 'vats');
   await bundleBundles(config.devices, 'devices');
 
+  if (process.env.SWINGSET_WRITE_BUNDLE) {
+  fs.writeFileSync(process.env.SWINGSET_WRITE_BUNDLE, JSON.stringify(config));
+  process.exit(9);
+  }
+
   if (verbose) {
     kdebugEnable(true);
   }
