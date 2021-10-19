@@ -13,7 +13,7 @@ import './types.js';
 /**
  * @template T
  * @param {ERef<BaseNotifier<T>>} baseNotifierP
- * @returns {AsyncIterable<T> & SharableNotifier}
+ * @returns {AsyncIterable<T> & SharableNotifier<T>}
  */
 export const makeNotifier = baseNotifierP => {
   const asyncIterable = makeAsyncIterableFromNotifier(baseNotifierP);
@@ -27,7 +27,7 @@ export const makeNotifier = baseNotifierP => {
      * `makeNotifier` to it at the new site to get an equivalent local
      * Notifier at that site.
      *
-     * @returns {NotifierInternals}
+     * @returns {NotifierInternals<T>}
      */
     getSharableNotifierInternals: () => baseNotifierP,
   });
@@ -229,7 +229,7 @@ export const makeNotifierFromAsyncIterable = asyncIterable => {
      * `makeNotifier` to it at the new site to get an equivalent local
      * Notifier at that site.
      *
-     * @returns {NotifierInternals}
+     * @returns {NotifierInternals<T>}
      */
     getSharableNotifierInternals: () => baseNotifier,
   });
