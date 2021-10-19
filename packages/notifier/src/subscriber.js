@@ -1,3 +1,4 @@
+/* eslint-disable no-underscore-dangle */
 // @ts-check
 // eslint-disable-next-line spaced-comment
 /// <reference types="ses"/>
@@ -10,7 +11,7 @@ import './types.js';
 
 /**
  * @template T
- * @param {SubscriptionInternals} startP
+ * @param {ERef<SubscriptionInternals<T>>} startP
  * @returns {Subscription<T>}
  */
 const makeSubscription = startP => {
@@ -24,7 +25,7 @@ const makeSubscription = startP => {
      * `makeSubscription` to it at the new site to get an equivalent local
      * Subscription at that site.
      *
-     * @returns {SubscriptionInternals}
+     * @returns {ERef<SubscriptionInternals<T>>}
      */
     getSharableSubscriptionInternals: () => startP,
   });
@@ -34,7 +35,7 @@ export { makeSubscription };
 
 /**
  * @template T
- * @param {SubscriptionInternals} tailP
+ * @param {ERef<SubscriptionInternals<T>>} tailP
  * @returns {SubscriptionIterator<T>}
  */
 const makeSubscriptionIterator = tailP => {
@@ -44,8 +45,8 @@ const makeSubscriptionIterator = tailP => {
     subscribe: () => makeSubscription(tailP),
     [Symbol.asyncIterator]: () => makeSubscriptionIterator(tailP),
     next: () => {
-      const resultP = E.get(tailP).head;
-      tailP = E.get(tailP).tail;
+      const resultP = E.get(tailP)._head;
+      tailP = E.get(tailP)._tail;
       return resultP;
     },
   });
@@ -59,16 +60,19 @@ const makeSubscriptionIterator = tailP => {
  * @returns {SubscriptionRecord<T>}
  */
 const makeSubscriptionKit = () => {
+  /** @type {((internals: ERef<SubscriptionInternals<T>>) => void) | undefined} */
   let rear;
-  const subscription = makeSubscription(new HandledPromise(r => (rear = r)));
+  const hp = new HandledPromise(r => (rear = r));
+  const subscription = makeSubscription(hp);
 
+  /** @type {IterationObserver<T>} */
   const publication = Far('publication', {
     updateState: value => {
       if (rear === undefined) {
         throw new Error('Cannot update state after termination.');
       }
       const { promise: nextTailE, resolve: nextRear } = makePromiseKit();
-      rear(harden({ head: { value, done: false }, tail: nextTailE }));
+      rear(harden({ _head: { value, done: false }, _tail: nextTailE }));
       rear = nextRear;
     },
     finish: finalValue => {
@@ -79,14 +83,16 @@ const makeSubscriptionKit = () => {
         new Error('cannot read past end of iteration'),
       );
       readComplaint.catch(_ => {}); // suppress unhandled rejection error
-      rear({ head: { value: finalValue, done: true }, tail: readComplaint });
+      rear({ _head: { value: finalValue, done: true }, _tail: readComplaint });
       rear = undefined;
     },
     fail: reason => {
       if (rear === undefined) {
         throw new Error('Cannot fail after termination.');
       }
-      rear(HandledPromise.reject(reason));
+      /** @type {Promise<SubscriptionInternals<T>>} */
+      const rejection = HandledPromise.reject(reason);
+      rear(rejection);
       rear = undefined;
     },
   });
