@@ -89,14 +89,12 @@ function makeBootstrap(argv, cb, vatPowers) {
     const { zoe, feeMintAccess } = await E(vats.zoe).buildZoe(vatAdminSvc);
     const [
       liquidateMinimum,
-      autoswap,
       treasury,
       electorate,
       counter,
       governor,
     ] = await Promise.all([
       E(zoe).install(cb.liquidateMinimum),
-      E(zoe).install(cb.autoswap),
       E(zoe).install(cb.treasury),
       E(zoe).install(cb.committee),
       E(zoe).install(cb.binaryVoteCounter),
@@ -105,7 +103,6 @@ function makeBootstrap(argv, cb, vatPowers) {
 
     const installations = {
       liquidateMinimum,
-      autoswap,
       treasury,
       electorate,
       counter,

@@ -4,19 +4,112 @@ import { E } from '@agoric/eventual-send';
 import '@agoric/governance/exported.js';
 
 import liquidateBundle from './bundle-liquidateMinimum.js';
-import autoswapBundle from './bundle-multipoolAutoswap.js';
+import ammBundle from './bundle-amm.js';
 import stablecoinBundle from './bundle-stablecoinMachine.js';
 import contractGovernorBundle from './bundle-contractGovernor.js';
 import noActionElectorateBundle from './bundle-noActionElectorate.js';
 import binaryVoteCounterBundle from './bundle-binaryVoteCounter.js';
 import { governedParameterTerms } from '../src/params';
 import { Far } from '@agoric/marshal';
+import { makeInitialValues } from '@agoric/zoe/src/contracts/vpool-xyk-amm/params';
+import { AmountMath } from '@agoric/ertp';
 
 const SECONDS_PER_HOUR = 60n * 60n;
 const SECONDS_PER_DAY = 24n * SECONDS_PER_HOUR;
 
 const DEFAULT_POOL_FEE = 24n;
 const DEFAULT_PROTOCOL_FEE = 6n;
+
+async function setupAmm(
+  timer,
+  electorateInstance,
+  zoe,
+  committeeCreator,
+  ammInstallation,
+  governorInstallation,
+  poolFee,
+  protocolFee,
+) {
+  const ammTerms = {
+    timer,
+    poolFeeBP: poolFee,
+    protocolFeeBP: protocolFee,
+    main: makeInitialValues(poolFee, protocolFee),
+  };
+
+  const ammGovernorTerms = {
+    timer,
+    electorateInstance,
+    governedContractInstallation: ammInstallation,
+    governed: {
+      terms: ammTerms,
+      issuerKeywordRecord: { Central: E(zoe).getFeeIssuer() },
+      privateArgs: {},
+    },
+  };
+  const {
+    instance: ammGovernorInstance,
+    publicFacet: ammGovernorPublicFacet,
+    creatorFacet: ammGovernorCreatorFacet,
+  } = await E(zoe).startInstance(governorInstallation, {}, ammGovernorTerms, {
+    electorateCreatorFacet: committeeCreator,
+  });
+
+  const ammCreatorFacetP = E(ammGovernorCreatorFacet).getInternalCreatorFacet();
+  const ammPublicP = E(ammGovernorCreatorFacet).getPublicFacet();
+
+  const [ammCreatorFacet, ammPublicFacet] = await Promise.all([
+    ammCreatorFacetP,
+    ammPublicP,
+  ]);
+
+
+  const g = {
+    ammGovernorInstance,
+    ammGovernorPublicFacet,
+    ammGovernorCreatorFacet,
+  };
+  const governedInstance = E(ammGovernorPublicFacet).getGovernedContract();
+
+  const amm = {
+    ammCreatorFacet,
+    ammPublicFacet,
+    instance: governedInstance,
+  };
+
+  return {
+    governor: g,
+    amm,
+  };
+}
+
+async function createLiquidityPool(
+  zoe,
+  ammPublicFacet,
+  collateralIssuer,
+  collateralPayment,
+  collateralAmount,
+  collateralName,
+  runPayment,
+  runAmount,
+) {
+  const liquidityBrand = await E(E(ammPublicFacet).addPool(collateralIssuer, collateralName)).getBrand();
+
+  const liqProposal = harden({
+    give: {
+      Secondary: collateralAmount,
+      Central: runAmount,
+    },
+    want: { Liquidity: AmountMath.makeEmpty(liquidityBrand) },
+  });
+
+  const liqInvitation = E(ammPublicFacet).makeAddLiquidityInvitation();
+  return E(zoe).offer(liqInvitation, liqProposal, {
+    Secondary: collateralPayment,
+    Central: runPayment,
+  });
+}
+
 /**
  * @param {Object} param0
  * @param {ERef<NameHub>} param0.agoricNames
@@ -63,7 +156,7 @@ export async function installOnChain({
   /** @type {Array<[string, SourceBundle]>} */
   const nameBundles = [
     ['liquidate', liquidateBundle],
-    ['autoswap', autoswapBundle],
+    ['amm', ammBundle],
     ['stablecoin', stablecoinBundle],
     ['contractGovernor', contractGovernorBundle],
     ['noActionElectorate', noActionElectorateBundle],
@@ -72,7 +165,7 @@ export async function installOnChain({
   ];
   const [
     liquidationInstall,
-    autoswapInstall,
+    ammInstall,
     stablecoinMachineInstall,
     contractGovernorInstall,
     noActionElectorateInstall,
@@ -95,15 +188,26 @@ export async function installOnChain({
     instance: electorateInstance,
   } = await E(zoeWPurse).startInstance(noActionElectorateInstall);
 
+  const { amm } = await setupAmm(
+    chainTimerService,
+    electorateInstance,
+    zoeWPurse,
+    electorateCreatorFacet,
+    ammInstall,
+    contractGovernorInstall,
+    poolFee,
+    protocolFee,
+  )
+
+  // todo(hibbert): set up an initial AMM pool with RUN and BLD
+  // const liqSeat = createLiquidityPool(...);
+
   const loanParams = {
     chargingPeriod: SECONDS_PER_HOUR,
     recordingPeriod: SECONDS_PER_DAY,
-    poolFee,
-    protocolFee,
   };
 
   const treasuryTerms = harden({
-    autoswapInstall,
     liquidationInstall,
     priceAuthority,
     loanParams,
@@ -133,7 +237,6 @@ export async function installOnChain({
 
   const treasuryInstance = await E(governorCreatorFacet).getInstance();
   const [
-    ammInstance,
     invitationIssuer,
     {
       issuers: { Governance: govIssuer, RUN: centralIssuer },
@@ -141,7 +244,6 @@ export async function installOnChain({
     },
     treasuryCreator,
   ] = await Promise.all([
-    E(E(governorCreatorFacet).getCreatorFacet()).getAMM(),
     E(zoeWPurse).getInvitationIssuer(),
     E(zoeWPurse).getTerms(treasuryInstance),
     E(governorCreatorFacet).getCreatorFacet()
@@ -162,12 +264,12 @@ export async function installOnChain({
     ['INSTALLATION_BOARD_ID', stablecoinMachineInstall],
     ['RUN_ISSUER_BOARD_ID', centralIssuer],
     ['RUN_BRAND_BOARD_ID', centralBrand],
-    ['AMM_INSTALLATION_BOARD_ID', autoswapInstall],
+    ['AMM_INSTALLATION_BOARD_ID', ammInstall],
     ['LIQ_INSTALLATION_BOARD_ID', liquidationInstall],
     ['BINARY_COUNTER_INSTALLATION_BOARD_ID', binaryCounterInstall],
     ['NO_ACTION_INSTALLATION_BOARD_ID', noActionElectorateInstall],
     ['CONTRACT_GOVERNOR_INSTALLATION_BOARD_ID', contractGovernorInstall],
-    ['AMM_INSTANCE_BOARD_ID', ammInstance],
+    ['AMM_INSTANCE_BOARD_ID', amm.governedInstance],
     ['INVITE_BRAND_BOARD_ID', E(invitationIssuer).getBrand()],
   ];
   await Promise.all(
@@ -185,7 +287,7 @@ export async function installOnChain({
   const nameAdminUpdates = [
     [uiConfigAdmin, treasuryUiDefaults.CONTRACT_NAME, treasuryUiDefaults],
     [instanceAdmin, treasuryUiDefaults.CONTRACT_NAME, treasuryInstance],
-    [instanceAdmin, treasuryUiDefaults.AMM_NAME, ammInstance],
+    [instanceAdmin, treasuryUiDefaults.AMM_NAME, amm.governedInstance],
     [brandAdmin, 'TreasuryGovernance', govBrand],
     [issuerAdmin, 'TreasuryGovernance', govIssuer],
     [brandAdmin, centralName, centralBrand],
