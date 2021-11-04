@@ -44,7 +44,6 @@ async function setupAmm(
     governed: {
       terms: ammTerms,
       issuerKeywordRecord: { Central: E(zoe).getFeeIssuer() },
-      privateArgs: {},
     },
   };
   const {

@@ -12,7 +12,7 @@ up, the validation checks will fail visibly.
 ## Parameter Governance
 
 params.js declares PoolFee and ProtocolFee both Bigints, which
-can bu update by a governance vote. The contract gets the initial values for
+can be updated by a governance vote. The contract gets the initial values for
 those parameters from its terms, and thereafter can be seen to only use the
 values provided by the `getParamValue()` method returned by the paramManager.
 
@@ -22,7 +22,7 @@ is only accessible to the contractGovernor. The added public methods are
 
  * getSubscription: get Subscription that updates when votes are called
  * getContractGovernor: returns the contractGovernor for verification
- * getGovernedParamsValues: returns a structure showing the current values of
+ * getGovernedParams: returns a structure showing the current values of
    both parameters 
  * getParamValue: allows a request for a description of the current value of
    either parameter

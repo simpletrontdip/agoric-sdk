@@ -60,19 +60,12 @@ const { details: X } = assert;
  * queries: getInputPrice, getOutputPrice, getPoolAllocation,
  * getLiquidityIssuer, and getLiquiditySupply.
  *
- * This contract has two parameters (poolFee and protocolFee) that are
- * managed by governance. The contract calls `handleParamGovernance()` at
- * startup, which allows a contractManager to call for votes that would change
- * the parameter values in a transparent way. When correctly set up, customers
- * with access to this contract's publicFacet can verify the connectivity, and
- * see which Electorate has the ability to vote on changes, and which votes are
- * ongoing or have taken place. If not correctly set up, the validation checks
- * will fail visibly.
- *
  * The initial values of the parameters are provided as poolFeeBP and
  * protocolFeeBP in terms. The poolFee is charged in RUN and each collateral, so
  * it is provided as a bigint. The protocolFee is always charged in RUN, but the
  * initial value is specified as a bigint for consistency.
+ *
+ * There's more discussion in governance.md.
  *
  * @type {ContractStartFn}
  */
@@ -104,8 +97,8 @@ const start = zcf => {
     makeCreatorFacet,
     getParamValue,
   } = handleParamGovernance(zcf, makeInitialValues(poolFeeBP, protocolFeeBP));
-  const getPoolFeeBP = () => getParamValue(POOL_FEE_KEY).value;
-  const getProtocolFeeBP = () => getParamValue(PROTOCOL_FEE_KEY).value;
+  const getPoolFeeBP = () => getParamValue(POOL_FEE_KEY);
+  const getProtocolFeeBP = () => getParamValue(PROTOCOL_FEE_KEY);
 
   /** @type {WeakStore<Brand,XYKPool>} */
   const secondaryBrandToPool = makeWeakStore('secondaryBrand');
